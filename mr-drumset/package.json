@@ -1,0 +1,14 @@
+{
+  "name": "mr-drumset",
+  "version": "1.0.0",
+  "description": "Local MR Drumset with WebXR and OSC Bridge",
+  "scripts": {
+    "install:all": "npm install && cd frontend && npm install && cd ../bridge && npm install",
+    "start": "concurrently \"npm run start:frontend\" \"npm run start:bridge\"",
+    "start:frontend": "cd frontend && npm run dev",
+    "start:bridge": "cd bridge && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
