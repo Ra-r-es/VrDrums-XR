@@ -3,13 +3,12 @@ import eruda from 'eruda';
 eruda.init();
 
 import * as THREE from 'three';
-import { ARButton } from 'three/examples/jsm/webxr/ARButton.js';
+import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { io } from 'socket.io-client';
 
 
 
-const serverIP = window.location.hostname;
-const socket = io(`http://${serverIP}:3000`);
+const socket = io();
 
 socket.on('connect', () => {
     console.log('Connected to OSC bridge server');
@@ -33,8 +32,12 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
 container.appendChild(renderer.domElement);
 
+scene.background = null;
+renderer.xr.setReferenceSpaceType('local-floor');
 
-document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+document.body.appendChild(VRButton.createButton(renderer, {
+    optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+}));
 
 
 const drums = [];
