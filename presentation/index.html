@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MR Drumset — Presentation</title>
+
+<!-- Reveal.js core + black theme -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css" id="theme">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div class="reveal">
+<div class="slides">
+
+<!-- ========== TITLE ========== -->
+<section class="title-slide">
+  <div class="title-eyebrow">Mixed Reality · WebXR · Pure Data</div>
+  <h1 class="title">Drumset<br><span class="title-accent">Kit VR</span></h1>
+  <p class="subtitle">Play a full drum kit in virtual reality.<br>Hear it through Pure Data.</p>
+  <div class="title-divider"></div>
+  <div class="team-names">
+    <span>Madalin Ioana</span>
+    <span>Istrate Irina</span>
+    <span>Stancu Rares</span>
+    <span>Jilavu Izabela</span>
+    <span>Manolachi George</span>
+  </div>
+  <p class="byline">2026</p>
+</section>
+
+<!-- ========== ELEVATOR PITCH ========== -->
+<section>
+<h2>What it is</h2>
+<div class="two-col">
+<div>
+<p>An 8-piece drumkit you play in VR with a Pico 4 headset.</p>
+<ul>
+<li>Two controllers → two drumsticks</li>
+<li>Realistic drum/cymbal geometry</li>
+<li>Real-time sample-based synthesis</li>
+<li>Spectator mirror on the desktop</li>
+</ul>
+</div>
+<div class="center-visual">
+<div class="big-emoji">🥁</div>
+</div>
+</div>
+</section>
+
+<!-- ========== ARCHITECTURE ========== -->
+<section>
+<h2>Architecture</h2>
+<pre class="ascii-diagram">
+ ┌─────────────────┐       ┌─────────────────┐
+ │  Pico 4 Browser │       │   PC Browser    │
+ │  Three.js+WebXR │       │ Spectator mirror│
+ └────────┬────────┘       └────────┬────────┘
+          │                          ▲
+          │        Socket.IO        │
+          ▼                          │
+      ┌───────────────────────────────┐
+      │  Bridge Server (Node :3000)   │
+      │   Socket.IO ⇄ OSC relay       │
+      └──────────────┬────────────────┘
+                     │ OSC/UDP :8000
+                     ▼
+               ┌─────────────┐
+               │  Pure Data  │
+               │ drumset.pd  │
+               └─────────────┘
+</pre>
+<p class="note">Three processes · two protocols · one shared scene graph.</p>
+</section>
+
+<!-- ========== THE THREE PILLARS ========== -->
+<section>
+<h2>Three pillars</h2>
+<div class="pillars">
+<div class="pillar webxr">
+<h3>WebXR</h3>
+<p>Immersive VR session on the Pico 4 browser. Controller pose, haptics, reference-space tracking.</p>
+</div>
+<div class="pillar webgl">
+<h3>WebGL</h3>
+<p>Three.js-driven scene with PBR materials, IBL reflections, particle system, 72 Hz target.</p>
+</div>
+<div class="pillar pd">
+<h3>Pure Data</h3>
+<p>Dataflow audio engine receiving OSC, playing velocity-crossfaded drum samples.</p>
+</div>
+</div>
+</section>
+
+<!-- ========== WEBXR ========== -->
+<section>
+<h2>WebXR — the VR layer</h2>
+<div class="two-col">
+<div>
+<ul>
+<li>Session type: <code>immersive-vr</code> with <code>local-floor</code> reference space</li>
+<li>Two <code>XRInputSource</code> controllers, haptics via <code>gamepad.hapticActuators</code></li>
+<li>Pose sent to spectator every other frame (~36 Hz)</li>
+<li><code>immersive-ar</code> triggers Pico's "Recovery Room" — avoided</li>
+</ul>
+</div>
+<div>
+<pre><code class="language-js">const xr = renderer.xr;
+xr.enabled = true;
+xr.setReferenceSpaceType('local-floor');
+
+document.body.appendChild(
+  VRButton.createButton(renderer, {
+    optionalFeatures: [
+      'local-floor',
+      'bounded-floor',
+      'hand-tracking'
+    ]
+  })
+);</code></pre>
+</div>
+</div>
+</section>
+
+<!-- ========== WEBGL / THREE.JS ========== -->
+<section>
+<h2>WebGL — realistic drum construction</h2>
+<div class="two-col">
+<div>
+<p>Each drum = composite group:</p>
+<ul>
+<li>Cylindrical shell (PBR metalness/roughness)</li>
+<li>Top + bottom chrome hoops (torus)</li>
+<li>Flat drum head (disc mesh, velocity-compressible)</li>
+<li>6–10 tensioning lugs (boxes)</li>
+<li>Optional stand/legs</li>
+</ul>
+<p>Cymbals = thin tapered disc + bell dome,<br>tilted in two axes.</p>
+</div>
+<div>
+<pre><code class="language-js">function buildDrumTop({ radius, height, ... }) {
+  const body = new THREE.Group();
+  body.rotation.x = tiltX;          // forward tilt
+
+  body.add(shell);                  // cylinder
+  body.add(topRim);                 // torus
+  body.add(botRim);
+  body.add(head);                   // circle disc
+  addLugs(body, 6, radius, height);
+
+  return {
+    group, body, head,
+    localHitCenter, localHitNormal,
+    hitRadius
+  };
+}</code></pre>
+</div>
+</div>
+</section>
+
+<!-- ========== IBL + LIGHTING ========== -->
+<section>
+<h2>Lighting &amp; reflections</h2>
+<div class="two-col">
+<div>
+<ul>
+<li>Warm main + blue/red/purple accents (4 point lights)</li>
+<li><code>ACESFilmicToneMapping</code> for cinematic response</li>
+<li><code>PMREMGenerator(RoomEnvironment)</code> → IBL map</li>
+<li>Chrome hoops and cymbals get real specular reflections at zero runtime cost</li>
+</ul>
+</div>
+<div>
+<pre><code class="language-js">const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(
+  new RoomEnvironment(), 0.04
+).texture;
+
+renderer.toneMapping =
+  THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;</code></pre>
+</div>
+</div>
+</section>
+
+<!-- ========== COLLISION — SWEPT PLANE ========== -->
+<section>
+<h2>Collision — swept plane</h2>
+<p class="note">The single most important piece of the interaction layer.</p>
+<div class="two-col">
+<div>
+<p>Each instrument exposes a playable plane:</p>
+<ul>
+<li>world centre <b>c</b></li>
+<li>unit normal <b>n̂</b></li>
+<li>radius <i>r</i></li>
+</ul>
+<p>Each frame, compute signed distances:</p>
+<pre><code class="language-js">dPrev = (p_prev - c) · n̂
+dCurr = (p_curr - c) · n̂
+
+if (dPrev > 0 && dCurr ≤ 0) {
+  // stick crossed into the surface
+  t = dPrev / (dPrev - dCurr);
+  contact = lerp(p_prev, p_curr, t);
+  v_n = (dPrev - dCurr) / dt;
+}</code></pre>
+</div>
+<div>
+<p>Hit accepted iff:</p>
+<ol>
+<li>Segment crosses the plane (dPrev &gt; 0, dCurr ≤ 0)</li>
+<li>Contact point lies within radius <i>r</i></li>
+<li>Normal-velocity <i>v<sub>n</sub></i> exceeds threshold</li>
+</ol>
+<p>Velocity is the <b>normal component</b> of motion → a sideways cymbal swish reads as soft, a direct hit reads as hard. Works for any surface orientation.</p>
+</div>
+</div>
+</section>
+
+<!-- ========== COLLISION DIAGRAM ========== -->
+<section>
+<h2>Why not bounding spheres?</h2>
+<div class="two-col">
+<div>
+<h3 class="bad">Naive approach</h3>
+<p>"Inside sphere AND moving downward"</p>
+<ul>
+<li>❌ Tall cymbal bounding sphere fires on horizontal motion</li>
+<li>❌ Only detects downward Y movement</li>
+<li>❌ No sense of <i>where</i> on the surface</li>
+<li>❌ Hit position = drum's centre, not the stick's contact point</li>
+</ul>
+</div>
+<div>
+<h3 class="good">Swept plane</h3>
+<ul>
+<li>✓ Works for any surface orientation</li>
+<li>✓ Velocity = component along n̂</li>
+<li>✓ Exact contact coordinates</li>
+<li>✓ Rim vs centre distinguishable by radial distance</li>
+</ul>
+</div>
+</div>
+</section>
+
+<!-- ========== PARTICLES ========== -->
+<section>
+<h2>Particle system</h2>
+<div class="two-col">
+<div>
+<ul>
+<li>400-particle pre-allocated ring buffer</li>
+<li>Single <code>THREE.Points</code> draw call</li>
+<li>Emit at contact point, not drum centre</li>
+<li>Velocity = normal-outward + tangential spray</li>
+<li>Gravity + air drag → realistic arcs</li>
+</ul>
+<p>Cymbal hits spray <b>sideways</b>; drum hits puff <b>upward</b> — all from the same code path, driven by each surface's own n̂.</p>
+</div>
+<div>
+<pre><code class="language-js">// Two tangent axes perpendicular to n̂
+_tanA.crossVectors(normal, axis).normalize();
+_tanB.crossVectors(normal, _tanA).normalize();
+
+// Mostly along normal, splash tangentially
+pVel[i3+0] = n.x * vn + _tanA.x * rx + _tanB.x * ry;
+pVel[i3+1] = n.y * vn + _tanA.y * rx + _tanB.y * ry;
+pVel[i3+2] = n.z * vn + _tanA.z * rx + _tanB.z * ry;</code></pre>
+</div>
+</div>
+</section>
+
+<!-- ========== WEB AUDIO ========== -->
+<section>
+<h2>Web Audio — the fast path</h2>
+<div class="two-col">
+<div>
+<p>Low-latency headset sound, fully in-browser:</p>
+<ul>
+<li>Master bus → <code>DynamicsCompressor</code> → destination</li>
+<li>Per-hit voice: oscillators + filtered noise</li>
+<li><code>StereoPannerNode</code> from hit X-coordinate</li>
+<li>Velocity-scaled peak gain</li>
+</ul>
+<p>Runs on the Pico's browser audio. Pd runs in parallel on the PC for the richer sound.</p>
+</div>
+<div>
+<pre><code class="language-js">const osc = ctx.createOscillator();
+const g   = ctx.createGain();
+osc.frequency.setValueAtTime(f0, t);
+osc.frequency.exponentialRampToValueAtTime(
+  f1, t + decay
+);
+g.gain.setValueAtTime(gain * v, t);
+g.gain.exponentialRampToValueAtTime(
+  0.001, t + decay
+);
+osc.connect(g).connect(panner);</code></pre>
+</div>
+</div>
+</section>
+
+<!-- ========== BRIDGE ========== -->
+<section>
+<h2>Bridge server — the glue</h2>
+<pre class="ascii-diagram small">
+  VR client  ──── drumHit {instrument, velocity, x, y, z} ────▶ Bridge
+                                                                   │
+                                  ┌────────────────────────────────┤
+                                  ▼                                ▼
+                    drumHitFeedback (to spectators)        OSC /drum/hit
+                                                           ──▶ UDP :8000
+</pre>
+<ul>
+<li>130 lines of Node.js (Express + Socket.IO + osc package)</li>
+<li>Only process with access to the OSC path</li>
+<li>Pose data relayed as <code>volatile.emit</code> — drops under congestion, never queues</li>
+</ul>
+</section>
+
+<!-- ========== PD — DATAFLOW ========== -->
+<section>
+<h2>Pure Data — dataflow programming</h2>
+<div class="two-col">
+<div>
+<p>Pd is a <b>visual dataflow language</b> for real-time audio:</p>
+<ul>
+<li>Programs = boxes (objects) + cords (edges)</li>
+<li>Two rates: <b>message</b> (events) and <b>audio</b> (~689 Hz blocks of 64 samples)</li>
+<li>No call stack — data simply flows</li>
+<li>Edit while running — changes take effect at the next block</li>
+</ul>
+</div>
+<div>
+<p>Our patch follows a classic three-stage pipeline:</p>
+<ol>
+<li><b>Input</b>: OSC → unpack → route by name</li>
+<li><b>Voicing</b>: 8 sample-player subpatches</li>
+<li><b>Mix</b>: shared stereo bus → limit → dac~</li>
+</ol>
+<p class="note">The structure <i>is</i> the documentation.</p>
+</div>
+</div>
+</section>
+
+<!-- ========== PD INPUT ========== -->
+<section>
+<h2>Pd — OSC input &amp; dispatch</h2>
+<pre><code class="language-pd">[netreceive -u -b 8000]           ; UDP listener
+         │
+[oscparse]                        ; raw bytes → typed list
+         │
+[route /drum/hit]                 ; drop non-hits
+         │
+[unpack s f f f f]                ; name, velocity, x, y, z
+ │ │ │ │ │
+ │ │ [s hit-x] [s hit-y] [s hit-z]
+ │ │
+ └─┴──► [pack s f] ──► [route bassdrum snare hitom ...]
+                                   ▼     ▼     ▼
+                             [s fire-bassdrum]   × 8</code></pre>
+<p class="note"><code>[unpack]</code>'s right-to-left firing order guarantees all data is latched before the instrument name fires its router outlet.</p>
+</section>
+
+<!-- ========== SAMPLE AUDIO ========== -->
+<section>
+<h2>Sample-based audio</h2>
+<div class="two-col">
+<div>
+<p>Real drum recordings, not synthesis:</p>
+<ul>
+<li>Bass, snare, hi-hat: <b>3-layer velocity crossfade</b> (MPC-Tutor 8-layer kit)</li>
+<li>Toms, crash, ride: <b>single-sample velocity-scaled</b> (99Sounds pack)</li>
+<li>14 WAV files, auto-loaded via <code>[soundfiler]</code> at startup</li>
+</ul>
+</div>
+<div>
+<pre><code class="language-pd">[loadbang]
+    │
+[read -resize samples/bassdrum-soft.wav
+      bassdrum-soft,
+ read -resize samples/bassdrum-med.wav
+      bassdrum-med,
+ read -resize samples/bassdrum-hard.wav
+      bassdrum-hard,
+ ... 14 total(
+    │
+[soundfiler]</code></pre>
+</div>
+</div>
+</section>
+
+<!-- ========== VELOCITY CROSSFADE ========== -->
+<section>
+<h2>3-layer velocity crossfade</h2>
+<div class="two-col">
+<div>
+<p>Three recordings of the same drum at different intensities.<br>Play all three simultaneously, gated by weights that sum to 1:</p>
+<pre><code class="language-pd">soft  = max(0, 1 - 2v)
+med   = min(2v, 2(1-v))
+hard  = max(0, 2v - 1)</code></pre>
+<ul>
+<li>v = 0.25 → 50% soft + 50% med</li>
+<li>v = 0.50 → 100% med</li>
+<li>v = 0.75 → 50% med + 50% hard</li>
+</ul>
+</div>
+<div>
+<p>The attack <b>timbre</b> changes with velocity, not just loudness — what a real drum does but single-samples can't.</p>
+<svg viewBox="0 0 400 200" style="width:100%; max-width:400px;">
+  <line x1="20" y1="180" x2="380" y2="180" stroke="#888" stroke-width="2"/>
+  <line x1="20" y1="20"  x2="20"  y2="180" stroke="#888" stroke-width="2"/>
+  <text x="200" y="198" fill="#aaa" font-size="11" text-anchor="middle">velocity</text>
+  <text x="15" y="15" fill="#aaa" font-size="11" text-anchor="end">gain</text>
+
+  <!-- soft: triangle from (20,20) to (200,180) -->
+  <polyline points="20,20 200,180 380,180" fill="none" stroke="#4fc3f7" stroke-width="3"/>
+  <text x="50" y="40" fill="#4fc3f7" font-size="14">soft</text>
+
+  <!-- med: triangle from (20,180) to (200,20) to (380,180) -->
+  <polyline points="20,180 200,20 380,180" fill="none" stroke="#ffb74d" stroke-width="3"/>
+  <text x="200" y="15" fill="#ffb74d" font-size="14" text-anchor="middle">med</text>
+
+  <!-- hard: triangle from (20,180) to (200,180) to (380,20) -->
+  <polyline points="20,180 200,180 380,20" fill="none" stroke="#ef5350" stroke-width="3"/>
+  <text x="370" y="40" fill="#ef5350" font-size="14" text-anchor="end">hard</text>
+</svg>
+</div>
+</div>
+</section>
+
+<!-- ========== VOICE ABSTRACTION ========== -->
+<section>
+<h2>Voice abstraction</h2>
+<p class="note">Pd abstractions = reusable subpatches. Argument <code>$1</code> is the drum name, substituted at instantiation.</p>
+<pre><code class="language-pd">[r fire-$1]                           ; e.g. fire-bassdrum
+    │
+[t f f f]                             ; forward velocity to 3 layers
+ │  │  │
+ │  │  └─► [t b f] → [expr max(0, 2*$f1-1)]   ; hard gain
+ │  │         │        │
+ │  │    [tabplay~ $1-hard]─►[*~]─────┐
+ │  │
+ │  └────► ... med layer ...           │
+ │                                      ▼
+ └───────► ... soft layer ...  ──► [+~] → [*~ 0.9] → [throw~ mix-L/R]</code></pre>
+<p>Main patch instantiates: <code>[voice-multi bassdrum]</code>, <code>[voice-multi snare]</code>, <code>[voice-multi hihat]</code>.</p>
+</section>
+
+<!-- ========== SPECTATOR ========== -->
+<section>
+<h2>Spectator mirror</h2>
+<div class="two-col">
+<div>
+<p>Desktop browser shows the VR user's view <b>live</b>:</p>
+<ul>
+<li>Same <code>main.js</code>, boolean <code>isSpectator</code> toggles behaviour</li>
+<li>VR client emits pose every other frame via volatile Socket.IO</li>
+<li>Spectator camera matches the VR headset's pose</li>
+<li>Two translucent "ghost" drumsticks show hand positions</li>
+<li>Visual hit feedback mirrored; sound stays on VR side</li>
+</ul>
+</div>
+<div>
+<pre><code class="language-js">socket.volatile.emit('xrPose', {
+  cam: {
+    px, py, pz,
+    qx, qy, qz, qw
+  },
+  ctrl: [c0Pose, c1Pose]
+});</code></pre>
+</div>
+</div>
+</section>
+
+<!-- ========== PERFORMANCE ========== -->
+<section>
+<h2>Performance budget</h2>
+<p>Target: <b>stable 72 Hz</b> on Pico XR2 Gen 1</p>
+<ul>
+<li>≈ 2,500 triangles total across all instruments</li>
+<li>≈ 30 draw calls</li>
+<li>5 lights (1 ambient + 4 point)</li>
+<li>400 particles (ring buffer, one Points draw call)</li>
+<li>Pixel ratio capped at 2×</li>
+<li>Pose data throttled to ~36 Hz</li>
+<li>Environment IBL pre-rendered once at startup</li>
+</ul>
+</section>
+
+<!-- ========== TECH STACK ========== -->
+<section>
+<h2>Tech stack</h2>
+<div class="stack-grid">
+<div><b>Rendering</b><br>Three.js 0.160 · WebGL 2 · WebXR · PMREM IBL</div>
+<div><b>Transport</b><br>Socket.IO · OSC over UDP</div>
+<div><b>Audio</b><br>Web Audio API (in-browser) · Pure Data (PC)</div>
+<div><b>Samples</b><br>MPC-Tutor 8-layer kit · 99Sounds Drum Samples</div>
+<div><b>Bridge</b><br>Node.js · Express · osc npm package</div>
+<div><b>Build</b><br>Vite 5 · basicSsl (HTTPS req. for WebXR)</div>
+<div><b>Debug</b><br>Eruda mobile console on the Pico</div>
+<div><b>Hardware</b><br>Pico 4 headset · 2× motion controllers</div>
+</div>
+</section>
+
+<!-- ========== FUTURE WORK ========== -->
+<section>
+<h2>Future work</h2>
+<ul>
+<li><b>Velocity-layered toms and cymbals</b> — currently single-sample; needs a multisampled kit that covers toms + cymbals</li>
+<li><b>Hand tracking</b> — Pico 4 supports it; extend collision sweep to finger-tip joints</li>
+<li><b>Drum-head ripple shader</b> — radial displacement from contact point</li>
+<li><b>Convolution reverb bus</b> — load a studio impulse response in Pd</li>
+<li><b>Recording</b> — dump hit timeline + OSC stream to a .mid for export</li>
+</ul>
+</section>
+
+<!-- ========== THANK YOU ========== -->
+<section class="title-slide">
+<h1 class="title">Thanks!</h1>
+<p class="subtitle">MR Drumset · WebXR + WebGL + Pure Data</p>
+<p class="byline">2026</p>
+</section>
+
+</div>
+</div>
+
+<!-- Full-screen background particle canvas -->
+<script>
+(function () {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx    = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const COLORS = ['#4fc3f7', '#ffb74d', '#ce93d8'];
+  const particles = Array.from({ length: 70 }, () => ({
+    x:     Math.random(),
+    y:     Math.random(),
+    r:     1.0 + Math.random() * 2.0,
+    vx:    (Math.random() - 0.5) * 0.00014,
+    vy:    (Math.random() - 0.5) * 0.00014,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    alpha: 0.15 + Math.random() * 0.28
+  }));
+
+  function draw() {
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    // Connecting lines
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const a = particles[i], b = particles[j];
+        const dx = (a.x - b.x) * w, dy = (a.y - b.y) * h;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        if (d < 160) {
+          ctx.beginPath();
+          ctx.moveTo(a.x * w, a.y * h);
+          ctx.lineTo(b.x * w, b.y * h);
+          ctx.strokeStyle = `rgba(79,195,247,${0.055 * (1 - d / 160)})`;
+          ctx.lineWidth = 0.7;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Dots
+    particles.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x * w, p.y * h, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.color + Math.round(p.alpha * 255).toString(16).padStart(2, '0');
+      ctx.fill();
+
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = 1; if (p.x > 1) p.x = 0;
+      if (p.y < 0) p.y = 1; if (p.y > 1) p.y = 0;
+    });
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+
+<!-- Reveal.js core + plugins -->
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+<script>
+    Reveal.initialize({
+        hash: true,
+        controls: true,
+        progress: true,
+        center: true,
+        transition: 'slide',
+        transitionSpeed: 'fast',
+        slideNumber: 'c/t',
+        width: 1080,
+        height: 600,
+        margin: 0.08,
+        minScale: 0.2,
+        maxScale: 2.0,
+        plugins: [ RevealHighlight, RevealNotes ]
+    });
+</script>
+
+</body>
+</html>
