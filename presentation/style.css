@@ -1,0 +1,391 @@
+/* =========================================================
+   MR Drumset Presentation — custom theme on top of reveal.js
+   ========================================================= */
+
+:root {
+    --accent-webxr: #4fc3f7;
+    --accent-webgl: #ffb74d;
+    --accent-pd:    #ce93d8;
+    --accent-red:   #ef5350;
+    --accent-green: #66bb6a;
+    --bg-dark:      #0b0b14;
+    --bg-panel:     #14141f;
+    --bg-panel2:    #1a1a28;
+    --text-main:    #e2e2e8;
+    --text-dim:     #9090a8;
+}
+
+/* ---- Full-screen particle canvas ---- */
+#bg-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    pointer-events: none;
+    display: block;
+}
+
+/* ---- Base ---- */
+html, body { background: var(--bg-dark); }
+
+.reveal {
+    background: transparent;
+    font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 20px;
+    color: var(--text-main);
+    position: relative;
+    z-index: 1;
+}
+
+.reveal .slides section {
+    padding: 0 2em;
+    box-sizing: border-box;
+}
+
+/* ---- Headings ---- */
+.reveal h1 {
+    font-size: 2.6em;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: #fff;
+    margin-bottom: 0.2em;
+    text-align: left;
+}
+.reveal h2 {
+    font-size: 1.45em;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: #f0f0f5;
+    margin: 0 0 0.6em 0;
+    padding-bottom: 0.35em;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+    text-align: left;
+}
+.reveal h3 {
+    font-size: 1em;
+    font-weight: 600;
+    color: #d8d8e8;
+    margin: 0 0 0.4em 0;
+}
+
+/* ---- Body text ---- */
+.reveal p {
+    font-size: 0.88em;
+    line-height: 1.6;
+    color: var(--text-main);
+    margin: 0.4em 0;
+    text-align: left;
+}
+.reveal ul, .reveal ol {
+    font-size: 0.85em;
+    line-height: 1.65;
+    color: var(--text-main);
+    margin: 0.3em 0 0.3em 1.2em;
+    text-align: left;
+}
+.reveal li + li { margin-top: 0.18em; }
+.reveal b { color: #fff; font-weight: 600; }
+.reveal code {
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    font-size: 0.82em;
+    background: rgba(255,255,255,0.07);
+    padding: 0.1em 0.45em;
+    border-radius: 4px;
+    color: #ffd680;
+}
+
+/* ---- Progress & controls ---- */
+.reveal .progress { height: 3px; color: var(--accent-webxr); }
+.reveal .controls { color: var(--accent-webxr); }
+.reveal .slide-number {
+    font-family: monospace;
+    font-size: 0.65em;
+    background: rgba(0,0,0,0.5);
+    padding: 4px 8px;
+    border-radius: 4px;
+    color: var(--text-dim);
+    right: 14px; bottom: 14px;
+}
+
+/* ================================================================
+   TITLE SLIDE
+   ================================================================ */
+.title-slide {
+    text-align: center !important;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Eyebrow: small caps tech descriptor */
+.title-eyebrow {
+    font-size: 0.62em;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent-webxr);
+    margin-bottom: 0.6em;
+    opacity: 0.85;
+}
+
+/* Main title */
+.title-slide h1.title {
+    font-size: 4em;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    line-height: 0.95;
+    color: #fff;
+    text-align: center;
+    margin: 0 0 0.5em 0;
+}
+
+/* Gradient accent on "Kit VR" */
+.title-slide h1.title .title-accent {
+    background: linear-gradient(120deg,
+        var(--accent-webxr) 0%,
+        var(--accent-webgl) 55%,
+        var(--accent-pd)    100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-block;
+}
+
+.title-slide .subtitle {
+    font-size: 0.88em;
+    color: var(--text-dim);
+    line-height: 1.55;
+    margin: 0 0 0 0;
+    max-width: 480px;
+}
+
+/* Thin horizontal rule */
+.title-divider {
+    width: 48px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent-webxr), var(--accent-pd));
+    margin: 1.2em auto;
+    border-radius: 1px;
+}
+
+/* Team names */
+.team-names {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.3em 1.4em;
+    margin: 0 auto 0.5em;
+    max-width: 600px;
+}
+.team-names span {
+    font-size: 0.74em;
+    color: #9898b4;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+.team-names span::before {
+    content: '—';
+    margin-right: 0.45em;
+    color: rgba(79,195,247,0.4);
+    font-weight: 300;
+}
+
+.byline {
+    font-size: 0.65em !important;
+    color: #55556a !important;
+    margin-top: 0.5em !important;
+    letter-spacing: 0.06em;
+}
+
+/* Tech badges (kept on other slides if needed) */
+.tech-badges { margin: 0.8em 0; display: none; }
+.badge {
+    display: inline-block;
+    padding: 0.3em 1em;
+    margin: 0 0.35em;
+    border-radius: 999px;
+    font-size: 0.72em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1.5px solid;
+    background: rgba(255,255,255,0.03);
+}
+.badge.webxr { color: var(--accent-webxr); border-color: var(--accent-webxr); }
+.badge.webgl { color: var(--accent-webgl); border-color: var(--accent-webgl); }
+.badge.pd    { color: var(--accent-pd);    border-color: var(--accent-pd); }
+
+/* ================================================================
+   TWO-COLUMN LAYOUT
+   ================================================================ */
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2em;
+    align-items: start;
+    margin-top: 0.4em;
+}
+.two-col > div { min-width: 0; }
+
+/* ================================================================
+   THREE PILLARS
+   ================================================================ */
+.pillars {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.2em;
+    margin-top: 0.6em;
+}
+.pillar {
+    padding: 1.2em 1.4em;
+    border-radius: 12px;
+    background: var(--bg-panel2);
+    border-top: 3px solid;
+    transition: transform 0.2s;
+}
+.pillar:hover { transform: translateY(-3px); }
+.pillar.webxr { border-color: var(--accent-webxr); }
+.pillar.webgl { border-color: var(--accent-webgl); }
+.pillar.pd    { border-color: var(--accent-pd); }
+.pillar h3    { margin-bottom: 0.5em; font-size: 1.05em; }
+.pillar p     { font-size: 0.82em; color: var(--text-dim); margin: 0; }
+
+/* ================================================================
+   ASCII DIAGRAMS
+   ================================================================ */
+.ascii-diagram {
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    font-size: 0.6em;
+    line-height: 1.35;
+    background: var(--bg-panel);
+    padding: 1.2em 1.5em;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.07);
+    color: #90caf9;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 0.6em 0;
+    text-align: left !important;
+}
+.ascii-diagram.small { font-size: 0.52em; }
+
+/* ================================================================
+   CODE BLOCKS
+   ================================================================ */
+.reveal pre {
+    font-size: 0.6em;
+    width: 100%;
+    margin: 0.5em 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    border-radius: 8px;
+    overflow: hidden;
+    text-align: left !important;
+}
+.reveal pre code {
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    background: #0e0e18;
+    color: #dde1f0;
+    padding: 1em 1.2em;
+    border-radius: 8px;
+    max-height: 420px;
+    line-height: 1.45;
+    display: block;
+    overflow-y: auto;
+}
+
+/* ================================================================
+   INLINE NOTES / ANNOTATIONS
+   ================================================================ */
+.note {
+    font-size: 0.8em;
+    color: var(--text-dim);
+    font-style: italic;
+    margin: 0.4em 0;
+    padding: 0.5em 0.9em;
+    border-left: 2px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.02);
+    border-radius: 0 6px 6px 0;
+    text-align: left !important;
+}
+
+/* ================================================================
+   GOOD / BAD column headers
+   ================================================================ */
+.good, .bad {
+    display: inline-block;
+    font-size: 0.78em;
+    font-weight: 700;
+    padding: 0.2em 0.7em;
+    border-radius: 5px;
+    margin-bottom: 0.6em;
+}
+.good { color: var(--accent-green); border: 1.5px solid var(--accent-green); }
+.bad  { color: var(--accent-red);   border: 1.5px solid var(--accent-red); }
+
+/* ================================================================
+   TECH STACK GRID
+   ================================================================ */
+.stack-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.9em;
+    margin-top: 0.4em;
+}
+.stack-grid > div {
+    padding: 0.85em 1.1em;
+    background: var(--bg-panel2);
+    border-radius: 8px;
+    border-left: 3px solid;
+    font-size: 0.82em;
+    line-height: 1.5;
+    color: var(--text-main);
+}
+.stack-grid > div b { color: #fff; display: block; margin-bottom: 0.2em; }
+.stack-grid > div:nth-child(8n+1) { border-color: var(--accent-webxr); }
+.stack-grid > div:nth-child(8n+2) { border-color: var(--accent-webgl); }
+.stack-grid > div:nth-child(8n+3) { border-color: var(--accent-pd); }
+.stack-grid > div:nth-child(8n+4) { border-color: var(--accent-webxr); }
+.stack-grid > div:nth-child(8n+5) { border-color: var(--accent-webgl); }
+.stack-grid > div:nth-child(8n+6) { border-color: var(--accent-pd); }
+.stack-grid > div:nth-child(8n+7) { border-color: var(--accent-webxr); }
+.stack-grid > div:nth-child(8n)   { border-color: var(--accent-webgl); }
+
+/* ================================================================
+   BIG EMOJI
+   ================================================================ */
+.center-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.big-emoji {
+    font-size: 7em;
+    line-height: 1;
+    filter: drop-shadow(0 8px 40px rgba(255,183,77,0.35));
+    animation: float 4s ease-in-out infinite;
+}
+@keyframes float {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-10px); }
+}
+
+/* ================================================================
+   SVG WEIGHT CHART
+   ================================================================ */
+svg text { font-family: 'Inter', sans-serif; }
+
+/* ================================================================
+   SLIDE BACKGROUND GLOW (subtle ambient)
+   ================================================================ */
+.reveal .slides section::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: -60px; right: -60px; bottom: -60px;
+    background: radial-gradient(ellipse at 20% 30%, rgba(79,195,247,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 70%, rgba(186,104,200,0.04) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: -1;
+}
