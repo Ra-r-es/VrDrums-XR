@@ -52,4 +52,4 @@ For Pure Data audio output, open `pd/drumset.pd` in Pure Data and enable DSP (Au
 - **Swing controllers** — hit the drums physically
 - **Right trigger** — bass drum pedal
 - **Left trigger** — hi-hat pedal
-- **Point + trigger** — raycast hit for instruments out of reach
+- **Point + trigger** — raycast hit for instruments out of reach 
