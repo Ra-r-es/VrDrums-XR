@@ -1,5 +1,7 @@
 # MR Drumset
 
+[Video demo]([https://www.exemplu.com](https://drive.google.com/file/d/1yNhQKjKw1xSLg0tQo5KZm_VjgFGh7Ay-/view?usp=sharing))
+
 A Mixed Reality drumset playable in a VR headset (Pico 4) using the browser — no app installation required. The player sees 8 virtual drum instruments in their physical space and hits them with the controllers as drumsticks. Sound plays in the headset and through Pure Data on the PC.
 
 ## Technologies
