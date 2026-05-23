@@ -1,17 +1,3 @@
-// ============================================================
-// MR Drumset - Mixed Reality Percussion Instrument
-// ============================================================
-// Architecture overview:
-//   - Three.js scene with realistic drum shells and cymbals
-//   - WebXR VR mode for Pico 4 headset
-//   - Socket.IO for bridge server (OSC to Pure Data)
-//   - Spectator mirror: desktop browser shows VR user's view
-//   - Swept-plane collision: per-surface normal + radius, works
-//     for horizontal drums and tilted cymbals alike
-//   - Contact-point particles, cymbal wobble, drum head flex
-//   - Web Audio API with master bus, compressor, stereo pan
-// ============================================================
-
 import eruda from 'eruda';
 eruda.init();
 
@@ -20,16 +6,10 @@ import { VRButton }        from 'three/examples/jsm/webxr/VRButton.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { io }              from 'socket.io-client';
 
-// ============================================================
-// NETWORK
-// ============================================================
 const socket = io();
 socket.on('connect',    () => { console.log('[Net] Connected'); setStatus('conn', true); });
 socket.on('disconnect', () => { console.log('[Net] Disconnected'); setStatus('conn', false); });
 
-// ============================================================
-// RENDERER & SCENE
-// ============================================================
 const BG_COLOR = 0x060612;
 
 const scene = new THREE.Scene();
@@ -50,15 +30,9 @@ renderer.toneMappingExposure = 1.15;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// PBR environment lighting — gives cymbals real specular reflections.
-// Rendered once at startup; near-zero runtime cost.
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-// ============================================================
-// LIGHTING
-// Warm main + cool accents. Environment does most specular work.
-// ============================================================
 scene.add(new THREE.AmbientLight(0x1a1a30, 0.35));
 
 const mainLight = new THREE.PointLight(0xffaa55, 1.6, 8);
@@ -77,9 +51,6 @@ const rimLight = new THREE.PointLight(0x8844ff, 1.2, 5);
 rimLight.position.set(0, 1, -2);
 scene.add(rimLight);
 
-// ============================================================
-// ENVIRONMENT
-// ============================================================
 const platformGeo = new THREE.RingGeometry(0.1, 1.4, 64);
 platformGeo.rotateX(-Math.PI / 2);
 scene.add(new THREE.Mesh(platformGeo, new THREE.MeshStandardMaterial({
@@ -91,7 +62,6 @@ const grid = new THREE.PolarGridHelper(1.5, 8, 3, 32, 0x222244, 0x222244);
 grid.position.y = 0.01;
 scene.add(grid);
 
-// Atmospheric dust
 const AMB_COUNT = 80;
 const ambPos = new Float32Array(AMB_COUNT * 3);
 for (let i = 0; i < AMB_COUNT; i++) {
@@ -108,9 +78,6 @@ const ambientDust = new THREE.Points(ambGeo, new THREE.PointsMaterial({
 ambientDust.frustumCulled = false;
 scene.add(ambientDust);
 
-// ============================================================
-// SHARED GEOMETRIES / MATERIALS
-// ============================================================
 const RIM_TUBE = 0.012;
 const chromeMat = new THREE.MeshStandardMaterial({
     color: 0xcccccc, metalness: 1.0, roughness: 0.18
@@ -119,7 +86,6 @@ const matteMat  = new THREE.MeshStandardMaterial({
     color: 0x222228, metalness: 0.4, roughness: 0.7
 });
 
-// Thin stand pole used under cymbals / snare.
 function makeStand(height) {
     const g = new THREE.Group();
     const pole = new THREE.Mesh(
@@ -137,7 +103,6 @@ function makeStand(height) {
     return g;
 }
 
-// Tensioning lugs around a drum shell. `n` lugs at radius `r`, height `h`.
 function addLugs(group, n, r, h) {
     const lugGeo = new THREE.BoxGeometry(0.02, h * 0.6, 0.016);
     for (let i = 0; i < n; i++) {
@@ -149,27 +114,13 @@ function addLugs(group, n, r, h) {
     }
 }
 
-// ============================================================
-// INSTRUMENT FACTORIES
-// Each builder returns:
-//   { group, hitMesh, localHitCenter, localHitNormal, hitRadius,
-//     head?  — optional head mesh for compression flex
-//     bow?   — optional cymbal mesh for wobble rotation }
-// localHit{Center,Normal} are in group space; transformed to
-// world every frame by the collision system.
-// ============================================================
-
-// Cylindrical drum with head on top, tilt-able forward.
-// `tilt` rotates the whole drum forward (toward player) in radians.
 function buildDrumTop({ radius, height, shellColor, headColor, tiltX = 0, lugs = 6 }) {
     const group = new THREE.Group();
 
-    // Tilt mount — a child group holds drum so the whole thing angles
     const body = new THREE.Group();
     body.rotation.x = tiltX;
     group.add(body);
 
-    // Shell: wood/lacquer
     const shell = new THREE.Mesh(
         new THREE.CylinderGeometry(radius, radius, height, 32, 1, true),
         new THREE.MeshStandardMaterial({
@@ -179,7 +130,6 @@ function buildDrumTop({ radius, height, shellColor, headColor, tiltX = 0, lugs =
     shell.position.y = 0;
     body.add(shell);
 
-    // Top rim (hoop)
     const topRim = new THREE.Mesh(
         new THREE.TorusGeometry(radius + 0.002, RIM_TUBE, 10, 48),
         chromeMat
@@ -188,12 +138,10 @@ function buildDrumTop({ radius, height, shellColor, headColor, tiltX = 0, lugs =
     topRim.position.y = height * 0.5;
     body.add(topRim);
 
-    // Bottom rim
     const botRim = topRim.clone();
     botRim.position.y = -height * 0.5;
     body.add(botRim);
 
-    // Drumhead (disc) — this is what we visually flex on hit
     const headGeo = new THREE.CircleGeometry(radius - 0.003, 48);
     headGeo.rotateX(-Math.PI / 2);
     const head = new THREE.Mesh(headGeo, new THREE.MeshStandardMaterial({
@@ -203,14 +151,10 @@ function buildDrumTop({ radius, height, shellColor, headColor, tiltX = 0, lugs =
     head.position.y = height * 0.5 + 0.0005;
     body.add(head);
 
-    // Lugs around shell
     const lugGroup = new THREE.Group();
     addLugs(lugGroup, lugs, radius + 0.005, height);
     body.add(lugGroup);
 
-    // Hit plane is the top head. In `body` local space it sits at
-    // y = height/2 with normal +Y. We need it in `group` local space,
-    // so bake the tilt transform: a tilt around X rotates normal & center.
     body.updateMatrix();
     const localCenter = new THREE.Vector3(0, height * 0.5 + 0.0005, 0).applyMatrix4(body.matrix);
     const localNormal = new THREE.Vector3(0, 1, 0).transformDirection(body.matrix);
@@ -223,12 +167,10 @@ function buildDrumTop({ radius, height, shellColor, headColor, tiltX = 0, lugs =
     };
 }
 
-// Bass drum — cylinder lying on its side, front head facing +Z (toward player).
 function buildBassDrum({ radius, length, shellColor, headColor }) {
     const group = new THREE.Group();
 
     const body = new THREE.Group();
-    // Lay cylinder on its side (axis along Z) by rotating around X
     body.rotation.x = Math.PI / 2;
     group.add(body);
 
@@ -240,7 +182,6 @@ function buildBassDrum({ radius, length, shellColor, headColor }) {
     );
     body.add(shell);
 
-    // Two rims (front/back of cylinder, i.e. ±Y in body space)
     for (const y of [-length * 0.5, length * 0.5]) {
         const rim = new THREE.Mesh(
             new THREE.TorusGeometry(radius + 0.002, RIM_TUBE * 1.2, 10, 56),
@@ -251,8 +192,6 @@ function buildBassDrum({ radius, length, shellColor, headColor }) {
         body.add(rim);
     }
 
-    // Front head (the one player strikes) — must face +Z in world.
-    // body rotated +π/2 around X maps local +Y → world +Z, so front = +Y
     const headGeo = new THREE.CircleGeometry(radius - 0.004, 48);
     headGeo.rotateX(-Math.PI / 2);
     const head = new THREE.Mesh(headGeo, new THREE.MeshStandardMaterial({
@@ -261,14 +200,12 @@ function buildBassDrum({ radius, length, shellColor, headColor }) {
     head.position.y = length * 0.5 + 0.0005;
     body.add(head);
 
-    // Lugs around shell
     addLugs(body, 10, radius + 0.006, length);
 
     body.updateMatrix();
     const localCenter = new THREE.Vector3(0, length * 0.5 + 0.0005, 0).applyMatrix4(body.matrix);
     const localNormal = new THREE.Vector3(0, 1, 0).transformDirection(body.matrix);
 
-    // Legs (feet) so the drum doesn't float
     const legGeo = new THREE.CylinderGeometry(0.01, 0.01, radius * 0.8, 8);
     for (const sx of [-1, 1]) {
         const leg = new THREE.Mesh(legGeo, matteMat);
@@ -285,14 +222,9 @@ function buildBassDrum({ radius, length, shellColor, headColor }) {
     };
 }
 
-// Cymbal — thin tapered disc with small bell at center. Tilts optional.
-// `tiltX` nods forward, `tiltZ` rolls sideways.
 function buildCymbal({ radius, bellRadius, color, tiltX = 0, tiltZ = 0 }) {
     const group = new THREE.Group();
 
-    // Bow — the big disc, we wobble this on hit.
-    // Store base quaternion so wobble can compose on top of the tilt
-    // without overwriting it.
     const bow = new THREE.Group();
     bow.rotation.x = tiltX;
     bow.rotation.z = tiltZ;
@@ -300,7 +232,6 @@ function buildCymbal({ radius, bellRadius, color, tiltX = 0, tiltZ = 0 }) {
     bow.userData.baseQuat = bow.quaternion.clone();
     group.add(bow);
 
-    // Main disc — very slight cone gives realistic bow profile
     const discGeo = new THREE.CylinderGeometry(radius, radius * 0.98, 0.004, 64, 1);
     const cymbalMat = new THREE.MeshStandardMaterial({
         color, metalness: 1.0, roughness: 0.28,
@@ -309,7 +240,6 @@ function buildCymbal({ radius, bellRadius, color, tiltX = 0, tiltZ = 0 }) {
     const disc = new THREE.Mesh(discGeo, cymbalMat);
     bow.add(disc);
 
-    // Bell (dome) in center
     const bell = new THREE.Mesh(
         new THREE.SphereGeometry(bellRadius, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.45),
         cymbalMat
@@ -329,13 +259,12 @@ function buildCymbal({ radius, bellRadius, color, tiltX = 0, tiltZ = 0 }) {
     };
 }
 
-// Hi-hat: two cymbals with a small gap. Hit top one.
 function buildHiHat({ radius, color }) {
     const group = new THREE.Group();
     const top = buildCymbal({ radius, bellRadius: 0.025, color });
     const bot = buildCymbal({ radius, bellRadius: 0.025, color });
     bot.group.position.y = -0.04;
-    bot.group.rotation.x = Math.PI; // inverted
+    bot.group.rotation.x = Math.PI;
     group.add(top.group);
     group.add(bot.group);
 
@@ -347,15 +276,6 @@ function buildHiHat({ radius, color }) {
     };
 }
 
-// ============================================================
-// INSTRUMENT DEFINITIONS
-// Laid out as a real drumset from player's viewpoint (facing -Z):
-//   Bass drum front-center on floor
-//   Snare slightly left of center at waist
-//   Two rack toms mounted over bass
-//   Floor tom right side
-//   Hi-hat left, crash upper-left, ride upper-right
-// ============================================================
 const instruments = [];
 
 const DEFS = [
@@ -439,14 +359,12 @@ DEFS.forEach(d => {
     built.group.position.set(...d.pos);
     scene.add(built.group);
 
-    // Stand pole if applicable
     if (d.stand) {
         const stand = makeStand(d.pos[1]);
         stand.position.set(d.pos[0], 0, d.pos[2]);
         scene.add(stand);
     }
 
-    // Ground glow disc under instrument
     const glowGeo = new THREE.CircleGeometry(built.hitRadius * 1.1, 32);
     glowGeo.rotateX(-Math.PI / 2);
     const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({
@@ -471,22 +389,15 @@ DEFS.forEach(d => {
         hitRadius: built.hitRadius,
         hitColor: new THREE.Color(d.hitColor),
         accentCol: new THREE.Color(d.accentCol),
-        // Runtime state
         hitTimer: 0, hitVel: 0,
         wobbleAxis: new THREE.Vector3(1, 0, 0),
         wobbleAngle: 0, wobbleVel: 0,
-        flex: 0  // drum head compression
+        flex: 0
     });
 });
 
-// Cached list of raycastable hit meshes for pointer interaction
 const instrumentMeshes = instruments.map(i => i.hitMesh);
 
-// ============================================================
-// PARTICLE SYSTEM
-// Ring buffer, spawned at actual hit-contact point with velocity
-// directed along surface normal (and tangentially for spark spray).
-// ============================================================
 const P_MAX = 400;
 const pPos  = new Float32Array(P_MAX * 3);
 const pCol  = new Float32Array(P_MAX * 3);
@@ -511,9 +422,7 @@ let pNext = 0;
 const _tanA = new THREE.Vector3();
 const _tanB = new THREE.Vector3();
 
-// Emit a burst at `pos` with dominant direction along `normal`.
 function emitBurst(pos, normal, color, count, velocity) {
-    // Build two tangent axes perpendicular to normal
     _tanA.set(1, 0, 0);
     if (Math.abs(normal.dot(_tanA)) > 0.9) _tanA.set(0, 1, 0);
     _tanA.crossVectors(normal, _tanA).normalize();
@@ -524,14 +433,12 @@ function emitBurst(pos, normal, color, count, velocity) {
         pNext = (pNext + 1) % P_MAX;
         const i3 = i * 3;
 
-        // Small positional jitter around contact point
         pPos[i3]     = pos.x + (Math.random() - 0.5) * 0.02;
         pPos[i3 + 1] = pos.y + (Math.random() - 0.5) * 0.02;
         pPos[i3 + 2] = pos.z + (Math.random() - 0.5) * 0.02;
 
-        // Velocity: mostly along normal, splash tangentially
-        const radialSpeed   = 0.4 + Math.random() * 1.2 * velocity;
-        const normalSpeed   = (0.8 + Math.random() * 1.4) * velocity;
+        const radialSpeed = 0.4 + Math.random() * 1.2 * velocity;
+        const normalSpeed = (0.8 + Math.random() * 1.4) * velocity;
         const ang = Math.random() * Math.PI * 2;
         const rx = Math.cos(ang) * radialSpeed;
         const ry = Math.sin(ang) * radialSpeed;
@@ -558,8 +465,7 @@ function tickParticles(dt) {
         pPos[i3]     += pVel[i3]     * dt;
         pPos[i3 + 1] += pVel[i3 + 1] * dt;
         pPos[i3 + 2] += pVel[i3 + 2] * dt;
-        pVel[i3 + 1] -= 3.0 * dt; // gravity
-        // Air drag — makes sparks decelerate naturally
+        pVel[i3 + 1] -= 3.0 * dt;
         const drag = 1 - dt * 1.4;
         pVel[i3]     *= drag;
         pVel[i3 + 2] *= drag;
@@ -570,12 +476,6 @@ function tickParticles(dt) {
     pGeo.attributes.color.needsUpdate    = true;
 }
 
-// ============================================================
-// AUDIO SYNTHESIS
-// Master bus: dryGain -> compressor -> destination.
-// Each voice builds on oscillators + filtered noise with stereo pan
-// derived from hit X position, and velocity-sensitive filter depth.
-// ============================================================
 let audioCtx, masterBus, comp;
 
 function ensureAudio() {
@@ -594,7 +494,6 @@ function ensureAudio() {
     masterBus.connect(comp).connect(audioCtx.destination);
 }
 
-// Short filtered noise buffer, reused per voice
 function makeNoise(seconds, type, freq, q) {
     const len = Math.max(1, Math.floor(audioCtx.sampleRate * seconds));
     const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
@@ -615,7 +514,7 @@ function playSound(name, velocity, pan) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
     const t = audioCtx.currentTime;
-    const v = Math.max(0.05, Math.min(1, velocity));
+    const v = Math.pow(Math.max(0.05, Math.min(1, velocity)), 2.2);
 
     const panNode = audioCtx.createStereoPanner();
     panNode.pan.value = Math.max(-1, Math.min(1, pan));
@@ -625,7 +524,6 @@ function playSound(name, velocity, pan) {
 
     const out = panNode;
 
-    // Convenience: add a tonal sweep component
     const addTone = (f0, f1, decay, gain, waveform = 'sine') => {
         const osc = audioCtx.createOscillator();
         const g   = audioCtx.createGain();
@@ -638,7 +536,6 @@ function playSound(name, velocity, pan) {
         osc.start(t); osc.stop(t + decay + 0.02);
     };
 
-    // Convenience: add a filtered noise burst
     const addNoise = (decay, filterType, freq, q, gain) => {
         const { src, flt } = makeNoise(decay, filterType, freq, q);
         const g = audioCtx.createGain();
@@ -650,13 +547,11 @@ function playSound(name, velocity, pan) {
 
     switch (name) {
         case 'bassdrum':
-            // Subsonic thump + attack click
             addTone(120, 35, 0.45, 1.4, 'sine');
             addTone(60,  30, 0.6,  0.7, 'sine');
             addNoise(0.03, 'lowpass', 2000, 0.8, 0.6);
             break;
         case 'snare':
-            // Tonal body + snare wire buzz
             addTone(200, 120, 0.12, 0.6, 'triangle');
             addNoise(0.18, 'bandpass', 1800, 1.5, 1.0);
             addNoise(0.08, 'highpass', 4500, 0.7, 0.6);
@@ -674,7 +569,6 @@ function playSound(name, velocity, pan) {
             addNoise(0.03, 'lowpass', 900,  0.7, 0.3);
             break;
         case 'hihat':
-            // Fast metallic shimmer
             addNoise(0.08, 'highpass', 7000, 0.8, 0.8);
             addNoise(0.05, 'bandpass', 9000, 2.0, 0.5);
             break;
@@ -684,7 +578,6 @@ function playSound(name, velocity, pan) {
             addNoise(0.3, 'bandpass', 10000, 2.0, 0.4);
             break;
         case 'ride': {
-            // Short pingy tone + sustained shimmer
             addTone(4200, 3800, 0.4, 0.12, 'sine');
             addNoise(1.8, 'highpass', 5500, 0.5, 0.55);
             addNoise(1.5, 'bandpass', 8500, 1.0, 0.35);
@@ -693,18 +586,13 @@ function playSound(name, velocity, pan) {
     }
 }
 
-// ============================================================
-// HIT SYSTEM
-// ============================================================
-const COOLDOWN = 90;              // ms between hits on same instrument
+const COOLDOWN = 90;
 const hitTimes = {};
 
-// Dedicated scratch vectors so hitInstrument can't stomp the ones
-// that emitBurst relies on.
-const _hitOffset = new THREE.Vector3();
-const _hitNormal = new THREE.Vector3();
+const _hitOffset   = new THREE.Vector3();
+const _hitNormal   = new THREE.Vector3();
 const _hitGroupPos = new THREE.Vector3();
-const _invBowMat = new THREE.Matrix4();
+const _invBowMat   = new THREE.Matrix4();
 
 function hitInstrument(instr, velocity, contactWorld = null) {
     if (!instr) return;
@@ -714,49 +602,36 @@ function hitInstrument(instr, velocity, contactWorld = null) {
 
     const v = Math.max(0.08, Math.min(1, velocity));
 
-    // Visual flash
     instr.hitTimer = 0.3;
     instr.hitVel   = v;
     instr.hitMesh.material.emissive.copy(instr.hitColor);
     instr.hitMesh.material.emissiveIntensity = 1.5 + v * 3;
     if (instr.glow) instr.glow.material.opacity = 0.4 + 0.3 * v;
 
-    // World-space surface normal (reused below for particles)
     _hitNormal.copy(instr.localHitNormal)
         .transformDirection(instr.group.matrixWorld);
 
-    // Cymbal wobble: impart angular velocity around axis perpendicular
-    // to the hit offset projected into the surface. Axis is stored in
-    // bow-local space so the base tilt (baseQuat) is preserved while
-    // wobble composes a small extra rotation on top each frame.
     if (instr.bow && contactWorld) {
         instr.group.getWorldPosition(_hitGroupPos);
         _hitOffset.copy(contactWorld).sub(_hitGroupPos);
-        // Project offset onto surface plane so axis lies in the plane
         _hitOffset.addScaledVector(_hitNormal, -_hitOffset.dot(_hitNormal));
         instr.wobbleAxis.crossVectors(_hitOffset, _hitNormal);
         if (instr.wobbleAxis.lengthSq() < 1e-8) instr.wobbleAxis.set(1, 0, 0);
         instr.wobbleAxis.normalize();
-        // Convert world axis to bow-local so it stays valid when
-        // base tilt is re-applied each frame
         instr.bow.updateMatrixWorld();
         _invBowMat.copy(instr.bow.matrixWorld).invert();
         instr.wobbleAxis.transformDirection(_invBowMat);
         instr.wobbleVel += 6 * v;
     }
 
-    // Drum head compression (visual flex)
     if (instr.head) instr.flex = v;
 
-    // Particles at contact point, sprayed along surface normal
     const spawnPos = contactWorld || instr.group.position;
     emitBurst(spawnPos, _hitNormal, instr.hitColor, Math.floor(14 + 26 * v), v);
 
-    // Audio (with stereo pan based on hit X)
     const pan = Math.max(-1, Math.min(1, spawnPos.x / 0.8));
     playSound(instr.name, v, pan);
 
-    // Network: send actual contact point (Pd may use xyz for spatialization)
     socket.emit('drumHit', {
         instrument: instr.name,
         velocity: v,
@@ -766,14 +641,12 @@ function hitInstrument(instr, velocity, contactWorld = null) {
     console.log(`[Hit] ${instr.label} v=${v.toFixed(2)}`);
 }
 
-// Per-instrument visual decay — restores emissive, flex, wobble
 const _wobbleQuat = new THREE.Quaternion();
 function tickInstrumentAnims(dt, time) {
     instruments.forEach((instr, i) => {
-        // Emissive flash decay
         if (instr.hitTimer > 0) {
             instr.hitTimer -= dt;
-            const t = Math.max(0, instr.hitTimer / 0.3); // 1 -> 0
+            const t = Math.max(0, instr.hitTimer / 0.3);
             instr.hitMesh.material.emissiveIntensity =
                 0.0 + (1.5 + instr.hitVel * 3) * t;
             if (instr.glow) instr.glow.material.opacity = 0.1 + 0.3 * t;
@@ -784,23 +657,17 @@ function tickInstrumentAnims(dt, time) {
             }
         }
 
-        // Idle bob (subtle — keep hit plane accurate)
         instr.group.position.y = instr.baseY + Math.sin(time * 0.6 + i * 1.3) * 0.004;
 
-        // Cymbal wobble: spring-damped angular swing composed on top
-        // of the cymbal's base tilt (stored in bow.userData.baseQuat).
         if (instr.bow) {
             instr.wobbleAngle += instr.wobbleVel * dt;
-            instr.wobbleVel   -= instr.wobbleAngle * 22 * dt;    // spring
-            instr.wobbleVel   *= Math.max(0, 1 - 3.5 * dt);       // damping
+            instr.wobbleVel   -= instr.wobbleAngle * 22 * dt;
+            instr.wobbleVel   *= Math.max(0, 1 - 3.5 * dt);
             instr.wobbleAngle *= Math.max(0, 1 - 0.5 * dt);
-            _wobbleQuat.setFromAxisAngle(instr.wobbleAxis,
-                instr.wobbleAngle * 0.08);                        // up to ~5°
-            instr.bow.quaternion.copy(instr.bow.userData.baseQuat)
-                .multiply(_wobbleQuat);
+            _wobbleQuat.setFromAxisAngle(instr.wobbleAxis, instr.wobbleAngle * 0.08);
+            instr.bow.quaternion.copy(instr.bow.userData.baseQuat).multiply(_wobbleQuat);
         }
 
-        // Drum head compression: tiny Y squash on body, recover
         if (instr.head && instr.flex > 0) {
             const sy = 1 - 0.06 * instr.flex;
             if (instr.body) instr.body.scale.set(1, sy, 1);
@@ -813,9 +680,6 @@ function tickInstrumentAnims(dt, time) {
     });
 }
 
-// ============================================================
-// XR CONTROLLERS
-// ============================================================
 document.body.appendChild(VRButton.createButton(renderer, {
     optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
 }));
@@ -824,13 +688,11 @@ const controllers = [];
 const raycaster   = new THREE.Raycaster();
 const tmpMat      = new THREE.Matrix4();
 
-// Drumstick visual: tapered cylinder, base at controller origin
 const stickGeo = new THREE.CylinderGeometry(0.009, 0.014, 0.38, 10);
 stickGeo.translate(0, 0.19, 0);
 const stickMat = new THREE.MeshStandardMaterial({
     color: 0x8a6836, roughness: 0.55, metalness: 0.15
 });
-// Grip wrap near base
 const gripGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.06, 10);
 gripGeo.translate(0, 0.04, 0);
 const gripMat = new THREE.MeshStandardMaterial({
@@ -845,7 +707,6 @@ for (let i = 0; i < 2; i++) {
     const ctrl = renderer.xr.getController(i);
     scene.add(ctrl);
 
-    // Drumstick points along controller's -Z
     const stick = new THREE.Mesh(stickGeo, stickMat);
     stick.rotation.x = -Math.PI / 2;
     ctrl.add(stick);
@@ -858,7 +719,6 @@ for (let i = 0; i < 2; i++) {
     tip.position.set(0, 0, -0.38);
     ctrl.add(tip);
 
-    // Ray line
     const rayGeo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
         new THREE.Vector3(0, 0, -2.5)
@@ -870,12 +730,8 @@ for (let i = 0; i < 2; i++) {
 
     const state = {
         group: ctrl, tip, ray,
-        // Swept collision: previous tip world pos
         prevTip: new THREE.Vector3(),
         hasPrev: false,
-        // Which instrument the stick is currently "inside" the
-        // playable plane region — used to avoid re-triggering
-        // while lingering against the surface
         engaged: new Set(),
         targeted: null,
         isSelecting: false
@@ -886,7 +742,6 @@ for (let i = 0; i < 2; i++) {
         ctrl.userData.handedness = e.data.handedness;
     });
 
-    // Trigger press — ray-hit instrument or foot pedal
     ctrl.addEventListener('selectstart', () => {
         state.isSelecting = true;
         if (state.targeted) {
@@ -915,24 +770,14 @@ function haptic(ctrl, intensity, ms) {
     } catch { /* haptics unsupported */ }
 }
 
-// ============================================================
-// COLLISION DETECTION — SWEPT PLANE PER INSTRUMENT
-// For each instrument we have a playable plane (center, normal,
-// radius) in world space. Each frame we check whether the stick
-// tip crossed the plane between the previous and current frame,
-// and if so, whether the intersection point lies within the
-// circular playable region. Hit velocity = component of motion
-// along the surface normal over dt. Works for any orientation.
-// ============================================================
-const _curr   = new THREE.Vector3();
-const _delta  = new THREE.Vector3();
-const _center = new THREE.Vector3();
-const _normal = new THREE.Vector3();
+const _curr    = new THREE.Vector3();
+const _delta   = new THREE.Vector3();
+const _center  = new THREE.Vector3();
+const _normal  = new THREE.Vector3();
 const _contact = new THREE.Vector3();
 const _radial  = new THREE.Vector3();
 
 function tickCollision(dt) {
-    // Update instrument world matrices for accurate planes
     instruments.forEach(i => i.group.updateMatrixWorld());
 
     controllers.forEach(ctrl => {
@@ -942,35 +787,24 @@ function tickCollision(dt) {
 
         if (ctrl.hasPrev) {
             instruments.forEach(instr => {
-                // Transform plane into world space
-                _center.copy(instr.localHitCenter)
-                    .applyMatrix4(instr.group.matrixWorld);
-                _normal.copy(instr.localHitNormal)
-                    .transformDirection(instr.group.matrixWorld);
+                _center.copy(instr.localHitCenter).applyMatrix4(instr.group.matrixWorld);
+                _normal.copy(instr.localHitNormal).transformDirection(instr.group.matrixWorld);
 
-                // Signed distances of prev and curr from plane
                 const dPrev = _delta.copy(ctrl.prevTip).sub(_center).dot(_normal);
                 const dCurr = _delta.copy(_curr).sub(_center).dot(_normal);
 
-                // Hit condition: came from positive side, now on or past surface
                 const crossed = dPrev > 0 && dCurr <= 0;
 
                 if (crossed) {
-                    // Linear interpolation to contact point on the plane
                     const t = dPrev / (dPrev - dCurr || 1e-6);
                     _contact.copy(ctrl.prevTip).lerp(_curr, t);
 
-                    // Radial distance in plane from center
                     _radial.copy(_contact).sub(_center);
-                    // Subtract normal component (projection onto plane)
                     _radial.addScaledVector(_normal, -_radial.dot(_normal));
                     const radial = _radial.length();
 
                     if (radial <= instr.hitRadius && !ctrl.engaged.has(instr.name)) {
-                        // Velocity along inbound normal — this is the real
-                        // strike speed regardless of surface orientation
-                        const vn = (dPrev - dCurr) / Math.max(dt, 1e-4);
-                        // Normalize: typical hard hit ~2.5 m/s along normal
+                        const vn  = (dPrev - dCurr) / Math.max(dt, 1e-4);
                         const vel = Math.min(1, vn / 2.5);
                         if (vel > 0.08) {
                             hitInstrument(instr, vel, _contact);
@@ -979,7 +813,6 @@ function tickCollision(dt) {
                         ctrl.engaged.add(instr.name);
                     }
                 } else if (dCurr > 0.02) {
-                    // Once stick has left the surface region, allow re-trigger
                     ctrl.engaged.delete(instr.name);
                 }
             });
@@ -988,7 +821,6 @@ function tickCollision(dt) {
         ctrl.prevTip.copy(_curr);
         ctrl.hasPrev = true;
 
-        // Raycasting
         tmpMat.identity().extractRotation(ctrl.group.matrixWorld);
         raycaster.ray.origin.setFromMatrixPosition(ctrl.group.matrixWorld);
         raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpMat);
@@ -1007,9 +839,6 @@ function tickCollision(dt) {
     });
 }
 
-// ============================================================
-// SPECTATOR MIRROR SYSTEM
-// ============================================================
 let isSpectator = true;
 
 const overlay = document.createElement('div');
@@ -1032,7 +861,6 @@ function setStatus(key, val) {
     if (key === 'fps') el.textContent = 'FPS: ' + val;
 }
 
-// Ghost sticks for spectator
 const ghosts = [];
 for (let g = 0; g < 2; g++) {
     const group = new THREE.Group();
@@ -1053,7 +881,7 @@ renderer.xr.addEventListener('sessionstart', () => {
     isSpectator = false;
     scene.background = null;
     scene.fog = null;
-    ensureAudio(); // user-gesture unlocked context
+    ensureAudio();
     socket.emit('xrSessionStart');
     setStatus('xr', 'VR Active');
 });
@@ -1065,11 +893,10 @@ renderer.xr.addEventListener('sessionend', () => {
     setStatus('xr', 'Spectator Mode');
 });
 
-// Pose sync
 let poseFrame = 0;
 function sendPose() {
     if (isSpectator || !renderer.xr.isPresenting) return;
-    if (++poseFrame % 2) return; // ~36fps
+    if (++poseFrame % 2) return;
 
     const xrCam = renderer.xr.getCamera();
     socket.volatile.emit('xrPose', {
@@ -1105,14 +932,12 @@ socket.on('drumHitFeedback', data => {
     const instr = instruments.find(inst => inst.name === data.instrument);
     if (!instr) return;
     const v = data.velocity || 0.8;
-    // Mirror the visual hit (no sound, no OSC)
     instr.hitTimer = 0.3;
     instr.hitVel   = v;
     instr.hitMesh.material.emissive.copy(instr.hitColor);
     instr.hitMesh.material.emissiveIntensity = 1.5 + v * 3;
     if (instr.glow) instr.glow.material.opacity = 0.4 + 0.3 * v;
     if (instr.head) instr.flex = v;
-    // Wobble (approximate — no contact point sent, use generic axis)
     if (instr.bow) {
         instr.wobbleAxis.set(1, 0, 0);
         instr.wobbleVel += 5 * v;
@@ -1132,9 +957,6 @@ socket.on('xrSessionEnd', () => {
     setStatus('xr', 'Spectator Mode');
 });
 
-// ============================================================
-// RENDER LOOP
-// ============================================================
 const clock = new THREE.Clock();
 let frames = 0, lastFpsT = 0;
 
@@ -1163,9 +985,6 @@ function render() {
 
 renderer.setAnimationLoop(render);
 
-// ============================================================
-// WINDOW RESIZE
-// ============================================================
 window.addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
