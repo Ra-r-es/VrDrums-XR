@@ -89,4 +89,5 @@ dist-ssr
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+*.sw?demo.mp4
+*.mp4
